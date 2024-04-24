@@ -29,6 +29,6 @@
   "dependencies": {
     "ical-generator": "^1.4.3",
     "moment": "^2.23.0",
-    "tsdav": "^2.0.3",
+    "tsdav": "^2.0.3"
   }
 }
