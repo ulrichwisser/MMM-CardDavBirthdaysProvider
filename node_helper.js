@@ -3,7 +3,6 @@ const moment = require("moment");
 const icalGenerator = require("ical-generator");
 const dav = require("tsdav");
 var util = require("util");
-var vCard = require("vcard");
 
 module.exports = NodeHelper.create({
   requiresVersion: "2.6.0",
@@ -85,7 +84,6 @@ module.exports = NodeHelper.create({
     year = 0;
     if (typeof bday == "string") {
       parts = bday.split(/\D+/);
-      console.log("PARTS " + util.inspect(parts));
       if (parts.length == 3) {
         year = parts[0];
         month = parts[1];
@@ -111,7 +109,7 @@ module.exports = NodeHelper.create({
     } else if (typeof bday == "object") {
       return this._bday2date(bday.value);
     } else {
-      console.log("Found BDAY of type " + typeof bday);
+      console.log("Don't know what to do with BDAY of type " + typeof bday);
       return;
     }
 
@@ -134,18 +132,6 @@ module.exports = NodeHelper.create({
       minute: 0,
       second: 0
     });
-    console.log(
-      "BDAY2DATE( " +
-        bday +
-        " ) = " +
-        year +
-        "-" +
-        month +
-        "-" +
-        day +
-        "  " +
-        util.inspect(date)
-    );
 
     return date;
   },
@@ -169,33 +155,51 @@ module.exports = NodeHelper.create({
         const addressBooks = await client.fetchAddressBooks();
 
         for (let i = 0; i < addressBooks.length; i++) {
-          //console.log('Found address book name ' + addressBook.displayName);
-          const vcards = await client.fetchVCards({
-            addressBook: addressBooks[i]
-          });
+          // fetch full addressbook
+          const vcards = await client.fetchVCards({ addressBook: addressBooks[i] });
+
+          // loop through all addresses
           for (let j = 0; j < vcards.length; j++) {
-            var card = new vCard();
-            card.readData(vcards[j].data, function (errstr, json) {
-              if (errstr !== null) {
-                console.log("ERROR card.readData  " + errstr);
-                return;
+
+              // Only split if a character is directly after a newline because of base64
+              var data = vcards[j].data.split(/\r\n(?=\S)|\r(?=\S)|\n(?=\S)/);
+
+              var json = {};
+
+              for (var f = data.length-1; f >= 0; f--){
+                var fields = data[f].split(":");
+
+                /* We are only interested in two fields: FN and BDAY */
+
+                if (fields[0] === "FN") {
+                  json[fields[0]] = fields[1];
+                  continue;
+                }
+
+                /*
+                 * BDAY:20091231
+                 * BDAY;VALUE=DATE:19780815
+                 * BDAY;VALUE=date:1999-06-04
+                 * BDAY;X-APPLE-OMIT-YEAR=1604:1604-02-16
+                 */
+
+                if (!fields[0].startsWith("BDAY")) {
+                  continue;
+                }
+
+                json["BDAY"] = self._bday2date(fields[1]);
               }
+
               if (json["BDAY"]) {
                 birthdays.push({
                   name: json["FN"],
-                  birthday: self._bday2date(json["BDAY"]),
+                  birthday: json["BDAY"],
                   book: addressBooks[i].displayName
                 });
               }
-            });
           }
         }
-        birthdays.forEach((bday) => {
-          console.log(
-            bday.book + ": " + bday.name + " " + util.inspect(bday.birthday)
-          );
-        });
-        console.log("RESOLVE");
+        //birthdays.forEach((bday) => {console.log( bday.book + ": " + bday.name + " " + util.inspect(bday.birthday) ); });
         resolve(birthdays);
       })();
     }).catch((reason) => {
